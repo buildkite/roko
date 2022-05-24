@@ -117,6 +117,35 @@ err := roko.NewRetrier(
 })
 ```
 
+### Retries and Testing
+
+To speed up tests, roko can be configured with a custom sleep function:
+
+```Go
+err := roko.NewRetrier(
+  roko.WithStrategy(roko.Constant(50000 * time.Hour)) // Wait a very long time between attempts...
+  roko.WithSleepFunc(func(time.Duration) {})          // ...but don't actually sleep
+  roko.WithMaxAttempts(3),
+).Do(func(r *roko.Retrier) error {
+  return canFail()
+})
+```
+
+The actual function passed to `WithSleepFunc()` is arbitrary, but using a noop is probably going to be the most useful.
+
+For deterministically-generated jitter, the Retrier also accepts a `*rand.Rand`:
+```Go
+err := roko.NewRetrier(
+  roko.WithStrategy(roko.Constant(50000 * time.Hour))
+  roko.WithRand(rand.New(rand.NewSource(12345))), // Generate the same jitters every time, using a seeded random number generator
+  roko.WithMaxAttempts(3),
+  roko.WithJitter(),
+).Do(func(r *roko.Retrier) error {
+  return canFail()
+})
+```
+
+The random number generator is only used for jitter, so it only makes sense to pass one if you're using jitter.
 
 ## What's in a name?
 
@@ -128,6 +157,6 @@ Depending on who you ask, it's also [the owner of a basilisk](https://rationalwi
 
 By all means, please contribute! We'd love to have your input. If you run into a bug, feel free to open an issue, and if you find missing functionality, please don't hesitate to open a PR. If you have a weird and wonderful retry strategy you'd like to add, we'd love to see it.
 
-## Looking for a great CI provider? Look no further
+## Looking for a great CI provider? Look no further.
 
 [Buildkite](https://buildkite.com) is a platform for running fast, secure, and scalable CI pipelines on your own infrastructure.
