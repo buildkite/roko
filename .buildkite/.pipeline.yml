@@ -1,0 +1,15 @@
+steps:
+  - name: ":go: fmt"
+    key: test-go-fmt
+    command: ".buildkite/steps/test-go-fmt.sh"
+    plugins:
+      docker#v3.13.0:
+        image: "golang:1.18.2"
+
+
+  - name: ":hammer: Tests"
+    key: tests
+    command: "go test ./..."
+    plugins:
+      docker#v3.13.0:
+        image: "golang:1.18.2"
