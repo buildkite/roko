@@ -14,7 +14,7 @@ This will add Roko to your go.mod file, and make it available for use in your pr
 
 ## Usage
 
-Roko allows you to configure how your application should respond to operations that can fail. Its core interface is the **Retrier**, which allows you tell you application how, and under what circumstances, it should retry and operation.
+Roko allows you to configure how your application should respond to operations that can fail. Its core interface is the **Retrier**, which allows you tell you application how, and under what circumstances, it should retry an operation.
 
 Let's say we have some operation that we want to perform:
 ```Go
@@ -38,6 +38,7 @@ err := r.Do(func(r *roko.Retrier) error {
 In this situation, we'll try to run the `canFail` function, and if it returns an error, we'll wait 5 seconds, then try again. If `canFail` returns an error after hitting its max attempt count, `r.Do` will return that error. If `canFail` succeeds (ie it doesn't return an error), r.Do will return nil.
 
 ### Giving up early
+
 Sometimes, an error that your operation returns might not be recoverable, so we don't want to retry it. In this case, we can use the `roko.Retrier.Break` function. `Break()` instructs the retrier to halt after this run - note that it **doesn't immediately halt operation**.
 
 ```Go
@@ -58,6 +59,25 @@ err := r.Do(func(r *roko.Retrier) error {
 
 In this example, if `canFail()` returns an unrecoverable error, the result returned by the `r.Do()` call is the unrecoverable error.
 
+### Never give up!
+
+Alternatively (or as well as!), you might want your retrier to never give up, and continue trying until it eventually succeeds. Roko can facilitate this through the `TryForever()` option.
+
+```Go
+r := roko.NewRetrier(
+  roko.TryForever(),
+  roko.WithStrategy(roko.Constant(5 * time.Second)), // Wait 5 seconds between attempts
+)
+
+err := r.Do(func(r *roko.Retrier) error {
+  return canFail()
+})
+```
+
+This will try to perform `canFail()` until it eventaually succeeds.
+
+Note that the `Break()` method mentioned above still works when `TryForever()` is enabled - this allows you to still exit when an unrecoverable error comes along.
+
 ### Jitter
 
 In order to avoid a thundering herd problem, roko can be configured to add jitter to its retry interval calculations. When jitter is used, the interval calulator will add a random length of time up to one second to each interval calculation.
@@ -77,6 +97,7 @@ err := r.Do(func(r *roko.Retrier) error {
 In this example, everything is the same as the first example, but instead of always waiting 5 seconds, the retrier will wait for a random interval between 5 and 6 seconds. This can help reduce resource contention.
 
 ### Exponential Backoff
+
 If a constant retry strategy isn't to your liking, roko can be configured to use exponential backoff instead, based on the number of attempts that have occurred so far:
 
 ```Go
@@ -86,12 +107,7 @@ r := roko.NewRetrier(
 )
 
 err := r.Do(func(r *roko.Retrier) error {
-  err := canFail()
-  if err.Is(errorUnrecoverable) {
-    r.Break()  // Give up, we can't recover from this error
-    return err // We still need to return from this function, Break() doesn't halt this callback
-    // return nil would be appropriate too, if we don't want to handle this error further
-  }
+  return canFail()
 })
 ```
 
@@ -136,7 +152,7 @@ The actual function passed to `WithSleepFunc()` is arbitrary, but using a noop i
 For deterministically-generated jitter, the Retrier also accepts a `*rand.Rand`:
 ```Go
 err := roko.NewRetrier(
-  roko.WithStrategy(roko.Constant(50000 * time.Hour))
+  roko.WithStrategy(roko.Constant(5 * time.Second))
   roko.WithRand(rand.New(rand.NewSource(12345))), // Generate the same jitters every time, using a seeded random number generator
   roko.WithMaxAttempts(3),
   roko.WithJitter(),
