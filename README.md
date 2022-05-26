@@ -1,5 +1,8 @@
 # Roko
 
+[![Go Reference](https://pkg.go.dev/badge/github.com/buildkite/roko.svg)](https://pkg.go.dev/github.com/buildkite/roko)
+[![Build status](https://badge.buildkite.com/f546789abb4ecc61654da783bdcc05965789a4834958b178ec.svg)](https://buildkite.com/buildkite/roko)
+
 A Lightweight, Configurable, Easy-to-use Retry Library for Go
 
 ## Installation
