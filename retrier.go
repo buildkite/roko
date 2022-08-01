@@ -211,6 +211,9 @@ func (r *Retrier) AttemptCount() int {
 // Calling retrier.Do(someFunc) will cause the Retrier to attempt to call the function, and if it returns an error,
 // retry it using the settings provided to it.
 func (r *Retrier) Do(callback func(*Retrier) error) error {
+	// If we don't set lastAttemptAt, if the callback calls `retrier.String()`, it will compare to a zero-value time, which makes it look
+	// like the next retry is ~300 years ago
+	r.lastAttemptAt = time.Now()
 	var err error
 	for {
 		// Perform the action the user has requested we retry
