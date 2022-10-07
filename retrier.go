@@ -191,6 +191,10 @@ func (r *Retrier) String() string {
 		str = str + fmt.Sprintf("%d", r.maxAttempts)
 	}
 
+	if r.attemptCount+1 == r.maxAttempts {
+		return str
+	}
+
 	nextInterval := r.NextInterval()
 	if nextInterval > 0 {
 		str = str + fmt.Sprintf(" Retrying in %s", nextInterval)

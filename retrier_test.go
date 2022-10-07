@@ -270,7 +270,7 @@ func TestString_WithFiniteAttemptCount(t *testing.T) {
 		"Attempt 2/5 Retrying in 1s",
 		"Attempt 3/5 Retrying in 1s",
 		"Attempt 4/5 Retrying in 1s",
-		"Attempt 5/5 Retrying in 1s",
+		"Attempt 5/5",
 	}, retryingIns)
 }
 
@@ -295,7 +295,7 @@ func TestString_WithExponentialStrategy(t *testing.T) {
 		"Attempt 2/5 Retrying in 2s",
 		"Attempt 3/5 Retrying in 4s",
 		"Attempt 4/5 Retrying in 8s",
-		"Attempt 5/5 Retrying in 16s",
+		"Attempt 5/5",
 	}, retryingIns)
 }
 
@@ -355,7 +355,7 @@ func TestString_WithNoDelay(t *testing.T) {
 		"Attempt 2/5 Retrying immediately",
 		"Attempt 3/5 Retrying immediately",
 		"Attempt 4/5 Retrying immediately",
-		"Attempt 5/5 Retrying immediately",
+		"Attempt 5/5",
 	}, retryingIns)
 }
 
