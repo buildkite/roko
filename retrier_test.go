@@ -249,6 +249,116 @@ func TestNextInterval_ExponentialStrategy_WithJitter(t *testing.T) {
 	}
 }
 
+func TestString_WithFiniteAttemptCount(t *testing.T) {
+	t.Parallel()
+
+	insomniac := newInsomniac()
+	r := NewRetrier(
+		WithStrategy(Constant(1*time.Second)),
+		WithMaxAttempts(5),
+		WithSleepFunc(insomniac.sleep),
+	)
+
+	retryingIns := make([]string, 0, 5)
+	r.Do(func(_ *Retrier) error {
+		retryingIns = append(retryingIns, r.String())
+		return errDummy
+	})
+
+	assert.Equal(t, []string{
+		"Attempt 1/5 Retrying in 1s",
+		"Attempt 2/5 Retrying in 1s",
+		"Attempt 3/5 Retrying in 1s",
+		"Attempt 4/5 Retrying in 1s",
+		"Attempt 5/5 Retrying in 1s",
+	}, retryingIns)
+}
+
+func TestString_WithExponentialStrategy(t *testing.T) {
+	t.Parallel()
+
+	insomniac := newInsomniac()
+	r := NewRetrier(
+		WithStrategy(Exponential(2*time.Second, 0)),
+		WithMaxAttempts(5),
+		WithSleepFunc(insomniac.sleep),
+	)
+
+	retryingIns := make([]string, 0, 5)
+	r.Do(func(_ *Retrier) error {
+		retryingIns = append(retryingIns, r.String())
+		return errDummy
+	})
+
+	assert.Equal(t, []string{
+		"Attempt 1/5 Retrying in 1s",
+		"Attempt 2/5 Retrying in 2s",
+		"Attempt 3/5 Retrying in 4s",
+		"Attempt 4/5 Retrying in 8s",
+		"Attempt 5/5 Retrying in 16s",
+	}, retryingIns)
+}
+
+func TestString_WithTryForever(t *testing.T) {
+	t.Parallel()
+
+	insomniac := newInsomniac()
+	r := NewRetrier(
+		WithStrategy(Constant(1*time.Second)),
+		TryForever(),
+		WithSleepFunc(insomniac.sleep),
+	)
+
+	retryingIns := make([]string, 0, 5)
+	r.Do(func(_ *Retrier) error {
+		if r.AttemptCount() >= 5 {
+			r.Break()
+			return nil
+		}
+
+		retryingIns = append(retryingIns, r.String())
+
+		return errDummy
+	})
+
+	assert.Equal(t, []string{
+		"Attempt 1/∞ Retrying in 1s",
+		"Attempt 2/∞ Retrying in 1s",
+		"Attempt 3/∞ Retrying in 1s",
+		"Attempt 4/∞ Retrying in 1s",
+		"Attempt 5/∞ Retrying in 1s",
+	}, retryingIns)
+}
+
+func TestString_WithNoDelay(t *testing.T) {
+	t.Parallel()
+
+	r := NewRetrier(
+		WithStrategy(Constant(0)),
+		WithMaxAttempts(5),
+	)
+
+	retryingIns := make([]string, 0, 5)
+	r.Do(func(_ *Retrier) error {
+		if r.AttemptCount() >= 5 {
+			r.Break()
+			return nil
+		}
+
+		retryingIns = append(retryingIns, r.String())
+
+		return errDummy
+	})
+
+	assert.Equal(t, []string{
+		"Attempt 1/5 Retrying immediately",
+		"Attempt 2/5 Retrying immediately",
+		"Attempt 3/5 Retrying immediately",
+		"Attempt 4/5 Retrying immediately",
+		"Attempt 5/5 Retrying immediately",
+	}, retryingIns)
+}
+
 func withinJitterInterval(this, that time.Duration) bool {
 	bigger := this
 	smaller := that
