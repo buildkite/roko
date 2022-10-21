@@ -18,9 +18,8 @@ type Retrier struct {
 	forever      bool
 	rand         *rand.Rand
 
-	breakNext     bool
-	lastAttemptAt time.Time
-	sleepFunc     func(time.Duration)
+	breakNext bool
+	sleepFunc func(time.Duration)
 
 	intervalCalculator Strategy
 	strategyType       string
@@ -155,7 +154,6 @@ func (r *Retrier) Jitter() time.Duration {
 // for Exponential retry strategy
 func (r *Retrier) MarkAttempt() {
 	r.attemptCount += 1
-	r.lastAttemptAt = time.Now()
 }
 
 // Break causes the Retrier to stop retrying after it completes the next retry cycle
@@ -185,7 +183,7 @@ func (r *Retrier) NextInterval() time.Duration {
 }
 
 func (r *Retrier) String() string {
-	str := fmt.Sprintf("Attempt %d/", r.attemptCount)
+	str := fmt.Sprintf("Attempt %d/", r.attemptCount+1) // +1 because we increment the attempt count after the callback, which is the only useful place to call Retrier.String()
 
 	if r.forever {
 		str = str + "∞"
@@ -193,9 +191,13 @@ func (r *Retrier) String() string {
 		str = str + fmt.Sprintf("%d", r.maxAttempts)
 	}
 
+	if r.attemptCount+1 == r.maxAttempts {
+		return str
+	}
+
 	nextInterval := r.NextInterval()
 	if nextInterval > 0 {
-		str = str + fmt.Sprintf(" Retrying in %s", nextInterval-time.Since(r.lastAttemptAt))
+		str = str + fmt.Sprintf(" Retrying in %s", nextInterval)
 	} else {
 		str = str + " Retrying immediately"
 	}
