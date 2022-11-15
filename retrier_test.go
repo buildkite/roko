@@ -1,6 +1,7 @@
 package roko
 
 import (
+	"context"
 	"errors"
 	"testing"
 	"time"
@@ -50,6 +51,23 @@ func TestDo(t *testing.T) {
 		},
 		i.sleepIntervals,
 	)
+}
+
+func TestDoWithContext(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	retrier := NewRetrier(WithStrategy(Constant(1*time.Second)), TryForever())
+
+	err := retrier.DoWithContext(ctx, func(*Retrier) error {
+		t.Log("Should try once")
+		return errDummy
+	})
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("DoWithContext(cancelled) = %v, want %v", err, context.Canceled)
+	}
 }
 
 func TestDo_OnSuccess_ReturnsNil(t *testing.T) {
