@@ -1,6 +1,7 @@
 package roko
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"math/rand"
@@ -114,8 +115,7 @@ func WithSleepFunc(f func(time.Duration)) retrierOpt {
 // the retrier
 func NewRetrier(opts ...retrierOpt) *Retrier {
 	r := &Retrier{
-		sleepFunc: time.Sleep,
-		rand:      defaultRandom,
+		rand: defaultRandom,
 	}
 
 	for _, o := range opts {
@@ -213,10 +213,14 @@ func (r *Retrier) AttemptCount() int {
 // Calling retrier.Do(someFunc) will cause the Retrier to attempt to call the function, and if it returns an error,
 // retry it using the settings provided to it.
 func (r *Retrier) Do(callback func(*Retrier) error) error {
-	var err error
+	return r.DoWithContext(context.Background(), callback)
+}
+
+// DoWithContext is a context-aware variant of Do.
+func (r *Retrier) DoWithContext(ctx context.Context, callback func(*Retrier) error) error {
 	for {
 		// Perform the action the user has requested we retry
-		err = callback(r)
+		err := callback(r)
 		if err == nil {
 			return nil
 		}
@@ -229,11 +233,38 @@ func (r *Retrier) Do(callback func(*Retrier) error) error {
 
 		r.MarkAttempt()
 
-		// If the last callback called r.Break(), or if we've hit our call limit, bail out and return the last error we got (or nil)
+		// If the last callback called r.Break(), or if we've hit our call limit, bail out and return the last error we got
 		if r.ShouldGiveUp() {
 			return err
 		}
 
+		if err := r.sleepOrDone(ctx, nextInterval); err != nil {
+			return err
+		}
+	}
+}
+
+func (r *Retrier) sleepOrDone(ctx context.Context, nextInterval time.Duration) error {
+	if r.sleepFunc == nil {
+		t := time.NewTimer(nextInterval)
+		defer t.Stop()
+		select {
+		case <-t.C:
+			return nil
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+
+	sleepCh := make(chan struct{})
+	go func() {
 		r.sleepFunc(nextInterval)
+		close(sleepCh)
+	}()
+	select {
+	case <-sleepCh:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
 	}
 }
