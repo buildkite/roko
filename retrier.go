@@ -31,6 +31,7 @@ type Strategy func(*Retrier) time.Duration
 const (
 	constantStrategy    = "constant"
 	exponentialStrategy = "exponential"
+	manualStrategy      = "manual"
 )
 
 // Constant returns a strategy that always returns the same value, the interval passed in as an arg to the function
@@ -60,6 +61,48 @@ func Exponential(base, adjustment time.Duration) (Strategy, string) {
 
 		return adjustment + exponent + r.Jitter()
 	}, exponentialStrategy
+}
+
+// ManualStrategy allows each call to manually set the next interval duration,
+// e.g. as instructed by the failure message from a rate-limited API. It takes
+// a default strategy as fallback when no interval was manually specified.
+type ManualStrategy struct {
+	defaultStrategy     Strategy
+	defaultStrategyType string
+
+	attemptCount int
+	interval     time.Duration
+}
+
+// NewManual builds a ManualStrategy with the given default Strategy
+func NewManual(defaultStrategy Strategy, defaultStrategyType string) *ManualStrategy {
+	return &ManualStrategy{
+		defaultStrategy:     defaultStrategy,
+		defaultStrategyType: defaultStrategyType,
+		attemptCount:        -1,
+	}
+}
+
+// Register returns the values expected by WithStrategy(…)
+// e.g. WithStrategy(manual.Register())
+func (m *ManualStrategy) Register() (Strategy, string) {
+	name := fmt.Sprintf("%s(default:%s)", manualStrategy, m.defaultStrategyType)
+	return m.NextInterval, name
+}
+
+// SetNextInterval sets the delay interval to be used before the next try
+func (m *ManualStrategy) SetNextInterval(r *Retrier, d time.Duration) {
+	m.attemptCount = r.AttemptCount()
+	m.interval = d
+}
+
+// NextInterval returns the manually set interval for the next try, or falls
+// back to the default Strategy if not set manually.
+func (m *ManualStrategy) NextInterval(r *Retrier) time.Duration {
+	if m.attemptCount != r.AttemptCount() {
+		return m.defaultStrategy(r)
+	}
+	return m.interval
 }
 
 type retrierOpt func(*Retrier)

@@ -377,6 +377,44 @@ func TestString_WithNoDelay(t *testing.T) {
 	}, retryingIns)
 }
 
+func TestManual(t *testing.T) {
+	t.Parallel()
+
+	manual := NewManual(Constant(2 * time.Second))
+
+	insomniac := newInsomniac()
+
+	NewRetrier(
+		WithStrategy(manual.Register()),
+		WithMaxAttempts(5),
+		WithSleepFunc(insomniac.sleep),
+	).Do(func(r *Retrier) error {
+		switch r.AttemptCount() {
+		case 1:
+			manual.SetNextInterval(r, 4*time.Second)
+		case 3:
+			manual.SetNextInterval(r, 8*time.Second)
+		}
+		return errDummy
+	})
+
+	assert.Equal(t, []time.Duration{
+		2 * time.Second, // default
+		4 * time.Second, // manual
+		2 * time.Second, // default
+		8 * time.Second, // manual
+	}, insomniac.sleepIntervals)
+}
+
+// I don't know if there's any point or wisdom in including the default
+// strategy in the type/name here, they're not really used for anything.
+// This test is mostly to draw attention to the fact that it's doing so, in
+// case that's a problem one day.
+func TestManual_StrategyName(t *testing.T) {
+	_, name := NewManual(Constant(time.Second)).Register()
+	assert.Equal(t, "manual(default:constant)", name)
+}
+
 func withinJitterInterval(this, that time.Duration) bool {
 	bigger := this
 	smaller := that

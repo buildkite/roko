@@ -118,6 +118,33 @@ In this case, the amount of time the retrier will wait between attempts depends 
 
 The second argument to the `roko.Exponential()` method is a constant adjustment - roko will add this number to the calculated exponent.
 
+### Manual interval strategy
+
+Sometimes you only know the desired interval after each try, e.g. a rate-limited API may include a `Retry-After` header. For these cases, the manual strategy can be used, with another strategy as its default:
+
+```Go
+// manually specify interval during each try, defaulting to 10 seconds
+manual := roko.NewManual(roko.Constant(10 * time.Second))
+
+roko.NewRetrier(
+  roko.WithStrategy(manual.Register()),
+  roko.WithMaxAttempts(10),
+).Do(func(r *roko.Retrier) error {
+
+  response := apiCall() // may be rate limited
+
+  if err := response.HTTPError(); err != nil {
+    if response.Status == HttpTooManyRequests {
+      if wait, err := strconv.Atoi(response.Header("Retry-After")); err != nil {
+        r.SetNextInterval(r, wait * time.Second) // respect the API
+      }
+    }
+    return err
+  }
+  return nil
+})
+```
+
 ### Using a custom strategy
 
 If the two retry strategies built into roko (`Constant` and `Exponential`) aren't sufficient, you can define your own - the `roko.WithStrategy` method will accept anything that returns a tuple of `(roko.Strategy, string)`. For example, we could implement a custom `Linear` strategy, that multiplies the attempt count by a fixed number:
