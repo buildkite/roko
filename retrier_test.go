@@ -377,6 +377,35 @@ func TestString_WithNoDelay(t *testing.T) {
 	}, retryingIns)
 }
 
+func TestManualInterval_String(t *testing.T) {
+	t.Parallel()
+
+	strings := []string{}
+
+	manual := []int64{10, 20, 30, 40, 50}
+
+	NewRetrier(
+		WithStrategy(Constant(0)),
+		WithMaxAttempts(5),
+		WithSleepFunc(dummySleep),
+	).Do(func(r *Retrier) error {
+		attempt := r.AttemptCount()
+		if attempt%2 == 0 {
+			r.SetNextInterval(time.Duration(manual[attempt]) * time.Second)
+		}
+		strings = append(strings, r.String())
+		return errDummy
+	})
+
+	assert.Equal(t, []string{
+		"Attempt 1/5 Retrying in 10s",
+		"Attempt 2/5 Retrying immediately",
+		"Attempt 3/5 Retrying in 30s",
+		"Attempt 4/5 Retrying immediately",
+		"Attempt 5/5",
+	}, strings)
+}
+
 func withinJitterInterval(this, that time.Duration) bool {
 	bigger := this
 	smaller := that
