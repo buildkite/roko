@@ -136,6 +136,33 @@ err := roko.NewRetrier(
 })
 ```
 
+### Manually setting the next interval
+
+Sometimes you only know the desired interval after each try, e.g. a rate-limited API may include a `Retry-After` header. For these cases, the `SetNextInterval(time.Duration)` method can be used. It will apply only to the next interval, and then revert to the configured strategy unless called again on the next attempt.
+
+```Go
+// manually specify interval during each try, defaulting to 10 seconds
+roko.NewRetrier(
+  roko.WithStrategy(Constant(10 * time.Second)),
+  roko.WithMaxAttempts(10),
+).Do(func(r *roko.Retrier) error {
+
+  response := apiCall() // may be rate limited
+
+  if err := response.HTTPError(); err != nil {
+    if response.Status == HttpTooManyRequests {
+      if retryAfter, err := strconv.Atoi(response.Header("Retry-After")); err != nil {
+
+        r.SetNextInterval(retryAfter * time.Second) // respect the API
+
+      }
+    }
+    return err
+  }
+  return nil
+})
+```
+
 ### Retries and Testing
 
 To speed up tests, roko can be configured with a custom sleep function:
