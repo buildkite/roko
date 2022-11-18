@@ -377,33 +377,60 @@ func TestString_WithNoDelay(t *testing.T) {
 	}, retryingIns)
 }
 
-func TestManualInterval_String(t *testing.T) {
+func TestSetNextInterval_Strings(t *testing.T) {
 	t.Parallel()
 
 	strings := []string{}
 
-	manual := []int64{10, 20, 30, 40, 50}
-
 	NewRetrier(
-		WithStrategy(Constant(0)),
+		WithStrategy(Constant(10*time.Second)),
 		WithMaxAttempts(5),
 		WithSleepFunc(dummySleep),
 	).Do(func(r *Retrier) error {
-		attempt := r.AttemptCount()
-		if attempt%2 == 0 {
-			r.SetNextInterval(time.Duration(manual[attempt]) * time.Second)
+		switch r.AttemptCount() {
+		case 1:
+			r.SetNextInterval(0 * time.Second)
+		case 3:
+			r.SetNextInterval(4 * time.Second)
 		}
 		strings = append(strings, r.String())
 		return errDummy
 	})
 
 	assert.Equal(t, []string{
-		"Attempt 1/5 Retrying in 10s",
+		"Attempt 1/5 Retrying in 10s", // default
 		"Attempt 2/5 Retrying immediately",
-		"Attempt 3/5 Retrying in 30s",
-		"Attempt 4/5 Retrying immediately",
+		"Attempt 3/5 Retrying in 10s", // default
+		"Attempt 4/5 Retrying in 4s",
 		"Attempt 5/5",
 	}, strings)
+}
+
+func TestSetNextInterval_Interval(t *testing.T) {
+	t.Parallel()
+
+	insomniac := newInsomniac()
+
+	NewRetrier(
+		WithStrategy(Constant(2*time.Second)),
+		WithMaxAttempts(5),
+		WithSleepFunc(insomniac.sleep),
+	).Do(func(r *Retrier) error {
+		switch r.AttemptCount() {
+		case 1:
+			r.SetNextInterval(0 * time.Second)
+		case 3:
+			r.SetNextInterval(4 * time.Second)
+		}
+		return errDummy
+	})
+
+	assert.Equal(t, []time.Duration{
+		2 * time.Second, // default
+		0 * time.Second, // manual
+		2 * time.Second, // default
+		4 * time.Second, // manual
+	}, insomniac.sleepIntervals)
 }
 
 func withinJitterInterval(this, that time.Duration) bool {

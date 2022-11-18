@@ -241,9 +241,10 @@ func (r *Retrier) DoWithContext(ctx context.Context, callback func(*Retrier) err
 		// instead of        2^0, 2^1, 2^2, ..., 2^n seconds (good)
 		nextInterval := r.NextInterval()
 
-		r.MarkAttempt()
-
+		// Reset the manualInterval now that the nextInterval has been acquired.
 		r.manualInterval = nil
+
+		r.MarkAttempt()
 
 		// If the last callback called r.Break(), or if we've hit our call limit, bail out and return the last error we got
 		if r.ShouldGiveUp() {
