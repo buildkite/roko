@@ -24,6 +24,7 @@ type Retrier struct {
 
 	intervalCalculator Strategy
 	strategyType       string
+	manualInterval     *time.Duration
 }
 
 type Strategy func(*Retrier) time.Duration
@@ -161,6 +162,11 @@ func (r *Retrier) Break() {
 	r.breakNext = true
 }
 
+// SetNextInterval overrides the strategy for the interval before the next try
+func (r *Retrier) SetNextInterval(d time.Duration) {
+	r.manualInterval = &d
+}
+
 // ShouldGiveUp returns whether the retrier should stop trying do do the thing it's been asked to do
 // It returns true if the retry count is greater than r.maxAttempts, or if r.Break() has been called
 // It returns false if the retrier is supposed to try forever
@@ -179,6 +185,10 @@ func (r *Retrier) ShouldGiveUp() bool {
 // NextInterval returns the next interval that the retrier will use. Behind the scenes, it calls the function generated
 // by either retrier's strategy
 func (r *Retrier) NextInterval() time.Duration {
+	if r.manualInterval != nil {
+		return *r.manualInterval
+	}
+
 	return r.intervalCalculator(r)
 }
 
@@ -230,6 +240,9 @@ func (r *Retrier) DoWithContext(ctx context.Context, callback func(*Retrier) err
 		// ie, we would wait 2^1, 2^2, 2^3, ..., 2^n+1 seconds (bad)
 		// instead of        2^0, 2^1, 2^2, ..., 2^n seconds (good)
 		nextInterval := r.NextInterval()
+
+		// Reset the manualInterval now that the nextInterval has been acquired.
+		r.manualInterval = nil
 
 		r.MarkAttempt()
 
