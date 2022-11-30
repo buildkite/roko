@@ -89,20 +89,12 @@ func WithTimeout(t time.Duration) retrierOpt {
 	}
 }
 
-func Until(t time.Time) retrierOpt {
+func TryUntil(t time.Time) retrierOpt {
 	if t.Before(time.Now()) {
 		panic("until time must be in the future")
 	}
 
-	return func(r *Retrier) {
-		if r.maxAttempts == 0 {
-			// It's possible to mix and match timeouts and max attempts, but if we've set a timeout and no max attempts, then
-			// we should just go until the timeout
-			r.maxAttempts = math.MaxInt
-		}
-
-		r.timeout = time.Until(t)
-	}
+	return WithTimeout(time.Until(t))
 }
 
 func WithRand(rand *rand.Rand) retrierOpt {
