@@ -13,11 +13,13 @@ var defaultRandom = rand.New(rand.NewSource(time.Now().UnixNano()))
 const jitterInterval = 1000 * time.Millisecond
 
 type Retrier struct {
-	maxAttempts  int
-	attemptCount int
-	jitter       bool
-	forever      bool
-	rand         *rand.Rand
+	maxAttempts    int
+	maxAttemptsSet bool
+	attemptCount   int
+	jitter         bool
+	forever        bool
+	rand           *rand.Rand
+	timeout        *time.Duration
 
 	breakNext bool
 	sleepFunc func(time.Duration)
@@ -68,6 +70,7 @@ type retrierOpt func(*Retrier)
 // WithMaxAttempts sets the maximum number of retries that a retrier will attempt
 func WithMaxAttempts(maxAttempts int) retrierOpt {
 	return func(r *Retrier) {
+		r.maxAttemptsSet = true
 		r.maxAttempts = maxAttempts
 	}
 }
@@ -83,6 +86,14 @@ func WithStrategy(strategy Strategy, strategyType string) retrierOpt {
 	return func(r *Retrier) {
 		r.strategyType = strategyType
 		r.intervalCalculator = strategy
+	}
+}
+
+// WithTimeout will time out the retry loop after the `timeout` duration has elapsed. The timeout may end
+// the retry loop prior to any max attempts set with the WithMaxAttempts option
+func WithTimeout(timeout time.Duration) retrierOpt {
+	return func(r *Retrier) {
+		r.timeout = &timeout
 	}
 }
 
@@ -113,7 +124,7 @@ func WithSleepFunc(f func(time.Duration)) retrierOpt {
 }
 
 // NewRetrier creates a new instance of the Retrier struct. Pass in retrierOpt functions to customise the behaviour of
-// the retrier
+// the retrier. Panics when the combination of retries is invalid.
 func NewRetrier(opts ...retrierOpt) *Retrier {
 	r := &Retrier{
 		rand: defaultRandom,
@@ -125,8 +136,9 @@ func NewRetrier(opts ...retrierOpt) *Retrier {
 
 	// We use panics here rather than returning an error because all of these are logical issues caused by the programmer,
 	// they should never occur in normal running, and can't be logically recovered from
-	if r.maxAttempts == 0 && !r.forever {
-		panic("retriers must either run forever, or have a maximum attempt count")
+
+	if !(r.forever || r.maxAttempts > 0 || r.timeout != nil) {
+		panic("retriers must either run forever, have a maximum attempt count, or a have timeout")
 	}
 
 	if r.maxAttempts < 0 {
@@ -179,7 +191,11 @@ func (r *Retrier) ShouldGiveUp() bool {
 		return false
 	}
 
-	return r.attemptCount >= r.maxAttempts
+	if r.maxAttemptsSet {
+		return r.attemptCount >= r.maxAttempts
+	}
+
+	return false
 }
 
 // NextInterval returns the next interval that the retrier will use. Behind the scenes, it calls the function generated
@@ -228,6 +244,12 @@ func (r *Retrier) Do(callback func(*Retrier) error) error {
 
 // DoWithContext is a context-aware variant of Do.
 func (r *Retrier) DoWithContext(ctx context.Context, callback func(*Retrier) error) error {
+	if r.timeout != nil {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, *r.timeout)
+		defer cancel()
+	}
+
 	for {
 		// Perform the action the user has requested we retry
 		err := callback(r)

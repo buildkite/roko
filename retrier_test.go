@@ -53,6 +53,94 @@ func TestDo(t *testing.T) {
 	)
 }
 
+func TestWithTimeout(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+
+	expectedRuns := 4
+	period := time.Second / 1000
+	timeout := time.Duration(expectedRuns) * period
+
+	retrier := NewRetrier(
+		WithStrategy(Constant(period)),
+		WithTimeout(timeout),
+	)
+
+	runs := 0
+	err := retrier.DoWithContext(ctx, func(*Retrier) error {
+		runs++
+		return errDummy
+	})
+
+	assert.Equal(t, context.DeadlineExceeded, err)
+	assert.GreaterOrEqual(t, expectedRuns, runs, "Retrier needs to run at most %d times. It ran %d times.", expectedRuns, runs)
+
+	// make sure we exceed the timeout
+	time.Sleep(timeout)
+	assert.NoError(t, ctx.Err(), "The outer context should not have timed out")
+}
+
+func TestWithTimeoutAndWithMaxAttempts_WhereTimeoutExceededFirst(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+
+	expectedRuns := 4
+	period := time.Second / 1000
+	timeout := time.Duration(expectedRuns) * period
+
+	retrier := NewRetrier(
+		WithStrategy(Constant(period)),
+		WithMaxAttempts(expectedRuns+2),
+		WithTimeout(timeout),
+	)
+
+	runs := 0
+	err := retrier.DoWithContext(ctx, func(*Retrier) error {
+		runs++
+		return errDummy
+	})
+
+	// Should exit due to WithTimeout
+	assert.Equal(t, context.DeadlineExceeded, err)
+	assert.GreaterOrEqual(t, expectedRuns, runs, "Retrier needs to run at most %d times. It ran %d times.", expectedRuns, runs)
+
+	// make sure we exceed the timeout
+	time.Sleep(timeout)
+	assert.NoError(t, ctx.Err(), "The outer context should not have timed out")
+}
+
+func TestWithTimeoutAndWithMaxAttempts_WhereMaxAttemptsExceededFirst(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+
+	expectedRuns := 4
+	period := time.Second / 1000
+	timeout := time.Duration(expectedRuns+2) * period
+
+	retrier := NewRetrier(
+		WithStrategy(Constant(period)),
+		WithMaxAttempts(expectedRuns),
+		WithTimeout(timeout),
+	)
+
+	runs := 0
+	err := retrier.DoWithContext(ctx, func(*Retrier) error {
+		runs++
+		return errDummy
+	})
+
+	// Should exit due to WithMaxAttempts
+	assert.Equal(t, errDummy, err)
+	assert.Equal(t, expectedRuns, runs, "Retrier needs to run exactly %d times. It ran %d times.", expectedRuns, runs)
+
+	// make sure we exceed the timeout
+	time.Sleep(timeout)
+	assert.NoError(t, ctx.Err(), "The outer context should not have timed out")
+}
+
 func TestDoWithContext(t *testing.T) {
 	t.Parallel()
 
