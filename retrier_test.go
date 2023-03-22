@@ -244,6 +244,7 @@ func TestNextInterval_ExponentialStrategy_WithJitter(t *testing.T) {
 	insomniac := newInsomniac()
 	err := NewRetrier(
 		WithStrategy(Exponential(2*time.Second, 0)),
+		WithJitter(),
 		WithMaxAttempts(6),
 		WithSleepFunc(insomniac.sleep),
 	).Do(func(_ *Retrier) error { return errDummy })
@@ -256,6 +257,92 @@ func TestNextInterval_ExponentialStrategy_WithJitter(t *testing.T) {
 		4 * time.Second,
 		8 * time.Second,
 		16 * time.Second,
+	}
+
+	for idx, actualInterval := range insomniac.sleepIntervals {
+		assert.Truef(
+			t,
+			withinJitterInterval(actualInterval, expectedIntervals[idx]),
+			"actual interval %v wasn't within 1s of expected interval %v", actualInterval, expectedIntervals[idx],
+		)
+	}
+}
+
+func TestNextInterval_ExponentialMillisecondStrategy_500ms(t *testing.T) {
+	t.Parallel()
+
+	insomniac := newInsomniac()
+	err := NewRetrier(
+		WithStrategy(ExponentialSubsecond(500*time.Millisecond)),
+		WithMaxAttempts(10),
+		WithSleepFunc(insomniac.sleep),
+	).Do(func(_ *Retrier) error { return errDummy })
+
+	assert.Error(t, err)
+
+	// half a second reaches half a minute over 10 attempts
+	assert.Equal(t, []time.Duration{
+		500 * time.Millisecond,
+		839 * time.Millisecond,
+		1408 * time.Millisecond,
+		2364 * time.Millisecond,
+		3968 * time.Millisecond,
+		6661 * time.Millisecond,
+		11180 * time.Millisecond,
+		18765 * time.Millisecond,
+		31498 * time.Millisecond,
+	}, insomniac.sleepIntervals)
+}
+
+func TestNextInterval_ExponentialMillisecondStrategy_1sec(t *testing.T) {
+	t.Parallel()
+
+	insomniac := newInsomniac()
+	err := NewRetrier(
+		WithStrategy(ExponentialSubsecond(1*time.Second)),
+		WithMaxAttempts(10),
+		WithSleepFunc(insomniac.sleep),
+	).Do(func(_ *Retrier) error { return errDummy })
+
+	assert.Error(t, err)
+
+	// one second seconds reaches 100 seconds in 10 attempts
+	assert.Equal(t, []time.Duration{
+		1000 * time.Millisecond,
+		1778 * time.Millisecond,
+		3162 * time.Millisecond,
+		5623 * time.Millisecond,
+		9999 * time.Millisecond,
+		17782 * time.Millisecond,
+		31622 * time.Millisecond,
+		56234 * time.Millisecond,
+		99999 * time.Millisecond,
+	}, insomniac.sleepIntervals)
+}
+
+func TestNextInterval_ExponentialMillisecondStrategy_WithJitter(t *testing.T) {
+	t.Parallel()
+
+	insomniac := newInsomniac()
+	err := NewRetrier(
+		WithStrategy(ExponentialSubsecond(1*time.Second)),
+		WithJitter(),
+		WithMaxAttempts(10),
+		WithSleepFunc(insomniac.sleep),
+	).Do(func(_ *Retrier) error { return errDummy })
+
+	assert.Error(t, err)
+
+	expectedIntervals := []time.Duration{
+		1000 * time.Millisecond,
+		1778 * time.Millisecond,
+		3162 * time.Millisecond,
+		5623 * time.Millisecond,
+		9999 * time.Millisecond,
+		17782 * time.Millisecond,
+		31622 * time.Millisecond,
+		56234 * time.Millisecond,
+		99999 * time.Millisecond,
 	}
 
 	for idx, actualInterval := range insomniac.sleepIntervals {
