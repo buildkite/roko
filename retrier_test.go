@@ -268,33 +268,33 @@ func TestNextInterval_ExponentialStrategy_WithJitter(t *testing.T) {
 	}
 }
 
-func TestNextInterval_ExponentialMillisecondStrategy_500ms(t *testing.T) {
+func TestNextInterval_ExponentialSubsecondStrategy_100ms(t *testing.T) {
 	t.Parallel()
 
 	insomniac := newInsomniac()
 	err := NewRetrier(
-		WithStrategy(ExponentialSubsecond(500*time.Millisecond)),
+		WithStrategy(ExponentialSubsecond(100*time.Millisecond)),
 		WithMaxAttempts(10),
 		WithSleepFunc(insomniac.sleep),
 	).Do(func(_ *Retrier) error { return errDummy })
 
 	assert.Error(t, err)
 
-	// half a second reaches half a minute over 10 attempts
+	// very short initial delay of 100ms grows to quite short 1 second for 10 attempts
 	assert.Equal(t, []time.Duration{
-		500 * time.Millisecond,
-		839 * time.Millisecond,
-		1408 * time.Millisecond,
-		2364 * time.Millisecond,
-		3968 * time.Millisecond,
-		6661 * time.Millisecond,
-		11180 * time.Millisecond,
-		18765 * time.Millisecond,
-		31498 * time.Millisecond,
+		100 * time.Millisecond,
+		133 * time.Millisecond,
+		177 * time.Millisecond,
+		237 * time.Millisecond,
+		316 * time.Millisecond,
+		421 * time.Millisecond,
+		562 * time.Millisecond,
+		749 * time.Millisecond,
+		1000 * time.Millisecond,
 	}, insomniac.sleepIntervals)
 }
 
-func TestNextInterval_ExponentialMillisecondStrategy_1sec(t *testing.T) {
+func TestNextInterval_ExponentialSubsecondStrategy_1sec(t *testing.T) {
 	t.Parallel()
 
 	insomniac := newInsomniac()
@@ -306,21 +306,47 @@ func TestNextInterval_ExponentialMillisecondStrategy_1sec(t *testing.T) {
 
 	assert.Error(t, err)
 
-	// one second seconds reaches 100 seconds in 10 attempts
+	// reasonable initial delay of 1 second grows to reasonable 30 seconds for 10 attempts
 	assert.Equal(t, []time.Duration{
 		1000 * time.Millisecond,
-		1778 * time.Millisecond,
-		3162 * time.Millisecond,
+		1539 * time.Millisecond,
+		2371 * time.Millisecond,
+		3651 * time.Millisecond,
 		5623 * time.Millisecond,
-		9999 * time.Millisecond,
-		17782 * time.Millisecond,
+		8659 * time.Millisecond,
+		13335 * time.Millisecond,
+		20535 * time.Millisecond,
 		31622 * time.Millisecond,
-		56234 * time.Millisecond,
-		99999 * time.Millisecond,
 	}, insomniac.sleepIntervals)
 }
 
-func TestNextInterval_ExponentialMillisecondStrategy_WithJitter(t *testing.T) {
+func TestNextInterval_ExponentialSubsecondStrategy_5sec(t *testing.T) {
+	t.Parallel()
+
+	insomniac := newInsomniac()
+	err := NewRetrier(
+		WithStrategy(ExponentialSubsecond(5*time.Second)),
+		WithMaxAttempts(10),
+		WithSleepFunc(insomniac.sleep),
+	).Do(func(_ *Retrier) error { return errDummy })
+
+	assert.Error(t, err)
+
+	// quite long 5 second initial delay grows to long-but-reasonable ~6 minutes for 10 attempts
+	assert.Equal(t, []time.Duration{
+		5000 * time.Millisecond,
+		8514 * time.Millisecond,
+		14499 * time.Millisecond,
+		24690 * time.Millisecond,
+		42044 * time.Millisecond,
+		71597 * time.Millisecond,
+		121922 * time.Millisecond,
+		207620 * time.Millisecond,
+		353553 * time.Millisecond,
+	}, insomniac.sleepIntervals)
+}
+
+func TestNextInterval_ExponentialSubsecondStrategy_WithJitter(t *testing.T) {
 	t.Parallel()
 
 	insomniac := newInsomniac()
@@ -335,14 +361,14 @@ func TestNextInterval_ExponentialMillisecondStrategy_WithJitter(t *testing.T) {
 
 	expectedIntervals := []time.Duration{
 		1000 * time.Millisecond,
-		1778 * time.Millisecond,
-		3162 * time.Millisecond,
+		1539 * time.Millisecond,
+		2371 * time.Millisecond,
+		3651 * time.Millisecond,
 		5623 * time.Millisecond,
-		9999 * time.Millisecond,
-		17782 * time.Millisecond,
+		8659 * time.Millisecond,
+		13335 * time.Millisecond,
+		20535 * time.Millisecond,
 		31622 * time.Millisecond,
-		56234 * time.Millisecond,
-		99999 * time.Millisecond,
 	}
 
 	for idx, actualInterval := range insomniac.sleepIntervals {

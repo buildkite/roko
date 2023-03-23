@@ -67,20 +67,24 @@ func Exponential(base, adjustment time.Duration) (Strategy, string) {
 // and so handles sub-second intervals.
 //
 // Formula is:
-//   delayMilliseconds = initialMilliseconds ** (retries/12 + 1)
-// … where `12` is quite arbitrary to make a nicely scaled curve for e.g 5-10 attempts.
+//   delayMilliseconds = initialMilliseconds ** (retries/16 + 1)
+
+// The 16 exponent-divisor is arbitrarily chosen to scale curves nicely for a reasonable range
+// of initial delays and number of attempts (e.g. 1 second, 10 attempts).
 //
-// Example of initial time.Second growing over 10 attempts:
-//   0.5 → 0.8 → 1.4 → 2.4 → 4.0 → 6.7 →  11 →  19 →  31
-//   1.0 → 1.8 → 3.2 → 5.6 →  10 →  17 →  32 →  56 → 100
-//   2.0 → 3.8 → 7.1 →  13 →  25 →  47 →  89 → 168 → 317
+// Examples of a small, medium and large initial time.Second growing over 10 attempts:
+//
+//   100ms → 133ms → 177ms → 237ms → 316ms → 421ms → 562ms → 749ms → 1000ms
+//   1.0s  → 1.5s  → 2.4s  → 3.7s  → 5.6s  → 8.7s  → 13.3s → 20.6s → 31.6s
+//   5s    → 9s    → 14s   → 25s   → 42s   → 72s   → 120s  → 208s  → 354s
+//
 func ExponentialSubsecond(initial time.Duration) (Strategy, string) {
 	if initial < 1*time.Millisecond {
 		panic("ExponentialSubsecond retry strategies must have an initial delay of at least 1 millisecond")
 	}
 
 	return func(r *Retrier) time.Duration {
-		result := math.Pow(float64(initial/time.Millisecond), float64(r.attemptCount)/12+1.0)
+		result := math.Pow(float64(initial/time.Millisecond), float64(r.attemptCount)/16+1.0)
 
 		return time.Duration(result)*time.Millisecond + r.Jitter()
 	}, exponentialStrategy
