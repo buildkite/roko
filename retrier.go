@@ -63,6 +63,33 @@ func Exponential(base, adjustment time.Duration) (Strategy, string) {
 	}, exponentialStrategy
 }
 
+// ExponentialSubsecond is an exponential backoff using milliseconds as a base unit,
+// and so handles sub-second intervals.
+//
+// Formula is:
+//   delayMilliseconds = initialMilliseconds ** (retries/16 + 1)
+
+// The 16 exponent-divisor is arbitrarily chosen to scale curves nicely for a reasonable range
+// of initial delays and number of attempts (e.g. 1 second, 10 attempts).
+//
+// Examples of a small, medium and large initial time.Second growing over 10 attempts:
+//
+//   100ms → 133ms → 177ms → 237ms → 316ms → 421ms → 562ms → 749ms → 1000ms
+//   1.0s  → 1.5s  → 2.4s  → 3.7s  → 5.6s  → 8.7s  → 13.3s → 20.6s → 31.6s
+//   5s    → 9s    → 14s   → 25s   → 42s   → 72s   → 120s  → 208s  → 354s
+//
+func ExponentialSubsecond(initial time.Duration) (Strategy, string) {
+	if initial < 1*time.Millisecond {
+		panic("ExponentialSubsecond retry strategies must have an initial delay of at least 1 millisecond")
+	}
+
+	return func(r *Retrier) time.Duration {
+		result := math.Pow(float64(initial/time.Millisecond), float64(r.attemptCount)/16+1.0)
+
+		return time.Duration(result)*time.Millisecond + r.Jitter()
+	}, exponentialStrategy
+}
+
 type retrierOpt func(*Retrier)
 
 // WithMaxAttempts sets the maximum number of retries that a retrier will attempt
