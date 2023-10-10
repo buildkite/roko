@@ -6,7 +6,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
+	gocmp "github.com/google/go-cmp/cmp"
+	"gotest.tools/v3/assert"
+	"gotest.tools/v3/assert/cmp"
+	"gotest.tools/v3/assert/opt"
 )
 
 // Insomniac implements a sleep function, but it doesn't actually sleep, it just notes down the intervals it was
@@ -25,6 +28,12 @@ func (i *insomniac) sleep(interval time.Duration) {
 
 func dummySleep(interval time.Duration) {}
 
+func DurationExact() gocmp.Option {
+	return gocmp.Comparer(func(x, y time.Duration) bool {
+		return x == y
+	})
+}
+
 var errDummy = errors.New("this makes it retry")
 
 func TestDo(t *testing.T) {
@@ -38,19 +47,15 @@ func TestDo(t *testing.T) {
 	).Do(func(_ *Retrier) error {
 		return errDummy
 	})
+	assert.ErrorIs(t, err, errDummy)
 
-	assert.Error(t, err)
-
-	assert.Equal(t,
-		[]time.Duration{
-			1 * time.Second,
-			2 * time.Second,
-			4 * time.Second,
-			8 * time.Second,
-			// There are only four waits, because after the fifth try (the fourth wait), the retrier gives up
-		},
-		i.sleepIntervals,
-	)
+	assert.DeepEqual(t, []time.Duration{
+		1 * time.Second,
+		2 * time.Second,
+		4 * time.Second,
+		8 * time.Second,
+		// There are only four waits, because after the fifth try (the fourth wait), the retrier gives up
+	}, i.sleepIntervals, DurationExact())
 }
 
 func TestDoWithContext(t *testing.T) {
@@ -65,9 +70,7 @@ func TestDoWithContext(t *testing.T) {
 		t.Log("Should try once")
 		return errDummy
 	})
-	if !errors.Is(err, context.Canceled) {
-		t.Errorf("DoWithContext(cancelled) = %v, want %v", err, context.Canceled)
-	}
+	assert.ErrorIs(t, err, context.Canceled)
 }
 
 func TestDo_OnSuccess_ReturnsNil(t *testing.T) {
@@ -88,7 +91,7 @@ func TestDo_OnSuccess_ReturnsNil(t *testing.T) {
 		return errDummy
 	})
 
-	assert.NoError(t, err)
+	assert.NilError(t, err)
 	assert.Equal(t, 9, callcount)
 }
 
@@ -105,9 +108,7 @@ func TestShouldGiveUp_WithMaxAttempts(t *testing.T) {
 		callcount += 1
 		return errDummy
 	})
-
-	assert.Error(t, err)
-	assert.Equal(t, errDummy, err)
+	assert.ErrorIs(t, err, errDummy)
 
 	assert.Equal(t, 3, callcount)
 }
@@ -129,11 +130,8 @@ func TestShouldGiveUp_Break(t *testing.T) {
 
 		return errDummy
 	})
+	assert.ErrorIs(t, err, errDummy)
 
-	assert.Error(t, err)
-	assert.Equal(t, errDummy, err)
-
-	assert.Less(t, callcount, 500) // ie, it broke before hitting max attampts
 	assert.Equal(t, 251, callcount)
 }
 
@@ -145,7 +143,7 @@ func TestShouldGiveUp_Forever(t *testing.T) {
 		TryForever(),
 		WithSleepFunc(dummySleep),
 	).Do(func(r *Retrier) error {
-		assert.False(t, r.ShouldGiveUp())
+		assert.Check(t, r.ShouldGiveUp() == false)
 
 		if r.AttemptCount() == 250_000 { // an arbitrarily large number of retries
 			return nil
@@ -153,8 +151,7 @@ func TestShouldGiveUp_Forever(t *testing.T) {
 
 		return errDummy
 	})
-
-	assert.NoError(t, err)
+	assert.NilError(t, err)
 }
 
 func TestNextInterval_ConstantStrategy(t *testing.T) {
@@ -166,11 +163,10 @@ func TestNextInterval_ConstantStrategy(t *testing.T) {
 		WithMaxAttempts(1000),
 		WithSleepFunc(insomniac.sleep),
 	).Do(func(_ *Retrier) error { return errDummy })
-
-	assert.Error(t, err)
+	assert.ErrorIs(t, err, errDummy)
 
 	for _, interval := range insomniac.sleepIntervals {
-		assert.Equal(t, interval, 5*time.Second)
+		assert.Check(t, interval == 5*time.Second)
 	}
 }
 
@@ -179,21 +175,17 @@ func TestNextInterval_ConstantStrategy_WithJitter(t *testing.T) {
 
 	expected := 5 * time.Second
 	insomniac := newInsomniac()
+
 	err := NewRetrier(
 		WithStrategy(Constant(expected)),
 		WithJitter(),
 		WithMaxAttempts(1000),
 		WithSleepFunc(insomniac.sleep),
 	).Do(func(_ *Retrier) error { return errDummy })
-
-	assert.Error(t, err)
-	assert.Equal(t, errDummy, err)
+	assert.ErrorIs(t, err, errDummy)
 
 	for _, interval := range insomniac.sleepIntervals {
-		assert.Truef(t,
-			withinJitterInterval(interval, expected),
-			"actual interval %v was not within of expected interval %v", interval, jitterInterval, expected,
-		)
+		assert.Check(t, cmp.DeepEqual(interval, expected, opt.DurationWithThreshold(jitterInterval)))
 	}
 }
 
@@ -201,20 +193,24 @@ func TestNextInterval_ExponentialStrategy(t *testing.T) {
 	t.Parallel()
 
 	insomniac := newInsomniac()
+
 	err := NewRetrier(
 		WithStrategy(Exponential(2*time.Second, 0)),
 		WithMaxAttempts(5),
 		WithSleepFunc(insomniac.sleep),
 	).Do(func(_ *Retrier) error { return errDummy })
+	assert.ErrorIs(t, err, errDummy)
 
-	assert.Error(t, err)
-
-	assert.Equal(t, insomniac.sleepIntervals, []time.Duration{
-		1 * time.Second,
-		2 * time.Second,
-		4 * time.Second,
-		8 * time.Second,
-	})
+	assert.DeepEqual(t,
+		[]time.Duration{
+			1 * time.Second,
+			2 * time.Second,
+			4 * time.Second,
+			8 * time.Second,
+		},
+		insomniac.sleepIntervals,
+		DurationExact(),
+	)
 }
 
 func TestNextInterval_ExponentialStrategy_WithAdjustment(t *testing.T) {
@@ -227,15 +223,22 @@ func TestNextInterval_ExponentialStrategy_WithAdjustment(t *testing.T) {
 		WithSleepFunc(insomniac.sleep),
 	).Do(func(_ *Retrier) error { return errDummy })
 
-	assert.Error(t, err)
+	assert.ErrorIs(t, err, errDummy)
 
-	assert.Equal(t, insomniac.sleepIntervals, []time.Duration{
-		4 * time.Second,
-		5 * time.Second,
-		7 * time.Second,
-		11 * time.Second,
-		19 * time.Second,
-	})
+	assert.Assert(t,
+		cmp.DeepEqual(
+			[]time.Duration{
+				4 * time.Second,
+				5 * time.Second,
+				7 * time.Second,
+				11 * time.Second,
+				19 * time.Second,
+				// There are only four waits, because after the fifth try (the fourth wait), the retrier gives up
+			},
+			insomniac.sleepIntervals,
+			DurationExact(),
+		),
+	)
 }
 
 func TestNextInterval_ExponentialStrategy_WithJitter(t *testing.T) {
@@ -247,24 +250,19 @@ func TestNextInterval_ExponentialStrategy_WithJitter(t *testing.T) {
 		WithMaxAttempts(6),
 		WithSleepFunc(insomniac.sleep),
 	).Do(func(_ *Retrier) error { return errDummy })
+	assert.ErrorIs(t, err, errDummy)
 
-	assert.Error(t, err)
-
-	expectedIntervals := []time.Duration{
-		1 * time.Second,
-		2 * time.Second,
-		4 * time.Second,
-		8 * time.Second,
-		16 * time.Second,
-	}
-
-	for idx, actualInterval := range insomniac.sleepIntervals {
-		assert.Truef(
-			t,
-			withinJitterInterval(actualInterval, expectedIntervals[idx]),
-			"actual interval %v wasn't within 1s of expected interval %v", actualInterval, expectedIntervals[idx],
-		)
-	}
+	assert.DeepEqual(t,
+		[]time.Duration{
+			1 * time.Second,
+			2 * time.Second,
+			4 * time.Second,
+			8 * time.Second,
+			16 * time.Second,
+		},
+		insomniac.sleepIntervals,
+		opt.DurationWithThreshold(jitterInterval),
+	)
 }
 
 func TestString_WithFiniteAttemptCount(t *testing.T) {
@@ -278,18 +276,22 @@ func TestString_WithFiniteAttemptCount(t *testing.T) {
 	)
 
 	retryingIns := make([]string, 0, 5)
-	r.Do(func(_ *Retrier) error {
+	err := r.Do(func(_ *Retrier) error {
 		retryingIns = append(retryingIns, r.String())
 		return errDummy
 	})
+	assert.ErrorIs(t, err, errDummy)
 
-	assert.Equal(t, []string{
-		"Attempt 1/5 Retrying in 1s",
-		"Attempt 2/5 Retrying in 1s",
-		"Attempt 3/5 Retrying in 1s",
-		"Attempt 4/5 Retrying in 1s",
-		"Attempt 5/5",
-	}, retryingIns)
+	assert.DeepEqual(t,
+		[]string{
+			"Attempt 1/5 Retrying in 1s",
+			"Attempt 2/5 Retrying in 1s",
+			"Attempt 3/5 Retrying in 1s",
+			"Attempt 4/5 Retrying in 1s",
+			"Attempt 5/5",
+		},
+		retryingIns,
+	)
 }
 
 func TestString_WithExponentialStrategy(t *testing.T) {
@@ -303,18 +305,22 @@ func TestString_WithExponentialStrategy(t *testing.T) {
 	)
 
 	retryingIns := make([]string, 0, 5)
-	r.Do(func(_ *Retrier) error {
+	err := r.Do(func(_ *Retrier) error {
 		retryingIns = append(retryingIns, r.String())
 		return errDummy
 	})
+	assert.ErrorIs(t, err, errDummy)
 
-	assert.Equal(t, []string{
-		"Attempt 1/5 Retrying in 1s",
-		"Attempt 2/5 Retrying in 2s",
-		"Attempt 3/5 Retrying in 4s",
-		"Attempt 4/5 Retrying in 8s",
-		"Attempt 5/5",
-	}, retryingIns)
+	assert.DeepEqual(t,
+		[]string{
+			"Attempt 1/5 Retrying in 1s",
+			"Attempt 2/5 Retrying in 2s",
+			"Attempt 3/5 Retrying in 4s",
+			"Attempt 4/5 Retrying in 8s",
+			"Attempt 5/5",
+		},
+		retryingIns,
+	)
 }
 
 func TestString_WithTryForever(t *testing.T) {
@@ -328,7 +334,7 @@ func TestString_WithTryForever(t *testing.T) {
 	)
 
 	retryingIns := make([]string, 0, 5)
-	r.Do(func(_ *Retrier) error {
+	err := r.Do(func(_ *Retrier) error {
 		if r.AttemptCount() >= 5 {
 			r.Break()
 			return nil
@@ -338,8 +344,9 @@ func TestString_WithTryForever(t *testing.T) {
 
 		return errDummy
 	})
+	assert.NilError(t, err)
 
-	assert.Equal(t, []string{
+	assert.DeepEqual(t, []string{
 		"Attempt 1/∞ Retrying in 1s",
 		"Attempt 2/∞ Retrying in 1s",
 		"Attempt 3/∞ Retrying in 1s",
@@ -357,7 +364,7 @@ func TestString_WithNoDelay(t *testing.T) {
 	)
 
 	retryingIns := make([]string, 0, 5)
-	r.Do(func(_ *Retrier) error {
+	err := r.Do(func(_ *Retrier) error {
 		if r.AttemptCount() >= 5 {
 			r.Break()
 			return nil
@@ -367,8 +374,9 @@ func TestString_WithNoDelay(t *testing.T) {
 
 		return errDummy
 	})
+	assert.ErrorIs(t, err, errDummy)
 
-	assert.Equal(t, []string{
+	assert.DeepEqual(t, []string{
 		"Attempt 1/5 Retrying immediately",
 		"Attempt 2/5 Retrying immediately",
 		"Attempt 3/5 Retrying immediately",
@@ -382,7 +390,7 @@ func TestSetNextInterval_Strings(t *testing.T) {
 
 	strings := []string{}
 
-	NewRetrier(
+	err := NewRetrier(
 		WithStrategy(Constant(10*time.Second)),
 		WithMaxAttempts(5),
 		WithSleepFunc(dummySleep),
@@ -396,8 +404,9 @@ func TestSetNextInterval_Strings(t *testing.T) {
 		strings = append(strings, r.String())
 		return errDummy
 	})
+	assert.ErrorIs(t, err, errDummy)
 
-	assert.Equal(t, []string{
+	assert.DeepEqual(t, []string{
 		"Attempt 1/5 Retrying in 10s", // default
 		"Attempt 2/5 Retrying immediately",
 		"Attempt 3/5 Retrying in 10s", // default
@@ -411,7 +420,7 @@ func TestSetNextInterval_Interval(t *testing.T) {
 
 	insomniac := newInsomniac()
 
-	NewRetrier(
+	err := NewRetrier(
 		WithStrategy(Constant(2*time.Second)),
 		WithMaxAttempts(5),
 		WithSleepFunc(insomniac.sleep),
@@ -424,24 +433,12 @@ func TestSetNextInterval_Interval(t *testing.T) {
 		}
 		return errDummy
 	})
+	assert.ErrorIs(t, err, errDummy)
 
-	assert.Equal(t, []time.Duration{
+	assert.DeepEqual(t, []time.Duration{
 		2 * time.Second, // default
 		0 * time.Second, // manual
 		2 * time.Second, // default
 		4 * time.Second, // manual
-	}, insomniac.sleepIntervals)
-}
-
-func withinJitterInterval(this, that time.Duration) bool {
-	bigger := this
-	smaller := that
-
-	if bigger < smaller {
-		bigger, smaller = smaller, bigger
-	}
-
-	diff := bigger - smaller
-
-	return diff <= jitterInterval
+	}, insomniac.sleepIntervals, DurationExact())
 }
