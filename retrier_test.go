@@ -185,6 +185,9 @@ func TestNextInterval_ConstantStrategy_WithJitter(t *testing.T) {
 	assert.ErrorIs(t, err, errDummy)
 
 	for _, interval := range insomniac.sleepIntervals {
+		// This will pass occasionally, when the jitter is excatly 0, but it should be good enough
+		// to show that a bug is causing the jitter to always be 0
+		assert.Check(t, interval > expected, "interval: %s, expected: %s", interval, expected) // should be at least the expected interval
 		assert.Check(t, cmp.DeepEqual(interval, expected, opt.DurationWithThreshold(jitterInterval)))
 	}
 }
