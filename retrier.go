@@ -170,12 +170,12 @@ func NewRetrier(opts ...retrierOpt) *Retrier {
 	return r
 }
 
+// Jitter returns a duration in the interval (0, 1] s if jitter is enabled, or 0 s if it's not
 func (r *Retrier) Jitter() time.Duration {
-	if r.jitter {
-		return time.Duration(r.rand.Float32()) * jitterInterval
+	if !r.jitter {
+		return 0
 	}
-
-	return 0
+	return time.Duration((1.0 - r.rand.Float64()) * float64(jitterInterval))
 }
 
 // MarkAttempt increments the attempt count for the retrier. This affects ShouldGiveUp, and also affects the retry interval
