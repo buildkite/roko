@@ -316,6 +316,32 @@ func TestNextInterval_ExponentialSubsecondStrategy_1sec(t *testing.T) {
 	}, insomniac.sleepIntervals, DurationExact())
 }
 
+func TestNextInterval_ExponentialSubsecondStrategy_2sec(t *testing.T) {
+	t.Parallel()
+
+	insomniac := newInsomniac()
+	err := NewRetrier(
+		WithStrategy(ExponentialSubsecond(2*time.Second)),
+		WithMaxAttempts(10),
+		WithSleepFunc(insomniac.sleep),
+	).Do(func(_ *Retrier) error { return errDummy })
+	assert.ErrorIs(t, err, errDummy)
+
+	// initial delay of 2 grows to reasonable 90 seconds for 10 attempts,
+	// with total delay time of 233 seconds (~4 minutes).
+	assert.DeepEqual(t, []time.Duration{
+		2000 * time.Millisecond,
+		3216 * time.Millisecond,
+		5172 * time.Millisecond,
+		8317 * time.Millisecond,
+		13374 * time.Millisecond,
+		21508 * time.Millisecond,
+		34587 * time.Millisecond,
+		55619 * time.Millisecond,
+		89442 * time.Millisecond,
+	}, insomniac.sleepIntervals, DurationExact())
+}
+
 func TestNextInterval_ExponentialSubsecondStrategy_5sec(t *testing.T) {
 	t.Parallel()
 
