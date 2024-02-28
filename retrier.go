@@ -283,11 +283,11 @@ func (r *Retrier) DoWithContext(ctx context.Context, callback func(*Retrier) err
 	}
 }
 
-// DoFunc1 is a helper for retrying callback functions that return a value or an
+// DoFunc is a helper for retrying callback functions that return a value or an
 // error. It returns the last value returned by a call to callback, and reports
 // an error if none of the calls succeeded.
 // (Note this is not a method of Retrier, since methods can't be generic.)
-func DoFunc1[T any](ctx context.Context, r *Retrier, callback func(*Retrier) (T, error)) (T, error) {
+func DoFunc[T any](ctx context.Context, r *Retrier, callback func(*Retrier) (T, error)) (T, error) {
 	var t T
 	err := r.DoWithContext(ctx, func(rt *Retrier) error {
 		var err error
