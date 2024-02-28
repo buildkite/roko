@@ -74,10 +74,9 @@ func Exponential(base, adjustment time.Duration) (Strategy, string) {
 //
 // Examples of a small, medium and large initial time.Second growing over 10 attempts:
 //
-//   100ms → 133ms → 177ms → 237ms → 316ms → 421ms → 562ms → 749ms → 1000ms
-//   1.0s  → 1.5s  → 2.4s  → 3.7s  → 5.6s  → 8.7s  → 13.3s → 20.6s → 31.6s
-//   5s    → 9s    → 14s   → 25s   → 42s   → 72s   → 120s  → 208s  → 354s
-//
+//	100ms → 133ms → 177ms → 237ms → 316ms → 421ms → 562ms → 749ms → 1000ms
+//	1.0s  → 1.5s  → 2.4s  → 3.7s  → 5.6s  → 8.7s  → 13.3s → 20.6s → 31.6s
+//	5s    → 9s    → 14s   → 25s   → 42s   → 72s   → 120s  → 208s  → 354s
 func ExponentialSubsecond(initial time.Duration) (Strategy, string) {
 	if initial < 1*time.Millisecond {
 		panic("ExponentialSubsecond retry strategies must have an initial delay of at least 1 millisecond")
@@ -282,6 +281,51 @@ func (r *Retrier) DoWithContext(ctx context.Context, callback func(*Retrier) err
 			return err
 		}
 	}
+}
+
+// DoFunc is a helper for retrying callback functions that return a value or an
+// error. It returns the last value returned by a call to callback, and reports
+// an error if none of the calls succeeded.
+// (Note this is not a method of Retrier, since methods can't be generic.)
+func DoFunc[T any](ctx context.Context, r *Retrier, callback func(*Retrier) (T, error)) (T, error) {
+	var t T
+	err := r.DoWithContext(ctx, func(rt *Retrier) error {
+		var err error
+		t, err = callback(rt)
+		return err
+	})
+	return t, err
+}
+
+// DoFunc2 is a helper for retrying callback functions that return two value or
+// an error. It returns the last values returned by a call to callback, and
+// reports an error if none of the calls succeeded.
+// (Note this is not a method of Retrier, since methods can't be generic.)
+func DoFunc2[T1, T2 any](ctx context.Context, r *Retrier, callback func(*Retrier) (T1, T2, error)) (T1, T2, error) {
+	var t1 T1
+	var t2 T2
+	err := r.DoWithContext(ctx, func(rt *Retrier) error {
+		var err error
+		t1, t2, err = callback(rt)
+		return err
+	})
+	return t1, t2, err
+}
+
+// DoFunc3 is a helper for retrying callback functions that return 3 values or
+// an error. It returns the last values returned by a call to callback, and
+// reports an error if none of the calls succeeded.
+// (Note this is not a method of Retrier, since methods can't be generic.)
+func DoFunc3[T1, T2, T3 any](ctx context.Context, r *Retrier, callback func(*Retrier) (T1, T2, T3, error)) (T1, T2, T3, error) {
+	var t1 T1
+	var t2 T2
+	var t3 T3
+	err := r.DoWithContext(ctx, func(rt *Retrier) error {
+		var err error
+		t1, t2, t3, err = callback(rt)
+		return err
+	})
+	return t1, t2, t3, err
 }
 
 func (r *Retrier) sleepOrDone(ctx context.Context, nextInterval time.Duration) error {
