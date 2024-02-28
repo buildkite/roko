@@ -113,6 +113,23 @@ func TestShouldGiveUp_WithMaxAttempts(t *testing.T) {
 	assert.Equal(t, 3, callcount)
 }
 
+func TestTimeout(t *testing.T) {
+	t.Parallel()
+
+	callCount := 0
+	err := NewRetrier(
+		WithStrategy(Constant(5*time.Millisecond)),
+		WithTimeout(500*time.Millisecond),
+	).Do(func(_ *Retrier) error {
+		callCount += 1
+		return errDummy
+	})
+
+	assert.Error(t, err)
+	assert.Equal(t, err, errors.New("retrier timed out after 500ms"))
+	assert.Equal(t, 100, callCount)
+}
+
 func TestShouldGiveUp_Break(t *testing.T) {
 	t.Parallel()
 
