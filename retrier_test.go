@@ -186,8 +186,43 @@ func TestNextInterval_ConstantStrategy_WithJitter(t *testing.T) {
 
 	for _, interval := range insomniac.sleepIntervals {
 		assert.Check(t, interval > expected, "interval: %s, expected: %s", interval, expected)
-		assert.Check(t, cmp.DeepEqual(interval, expected, opt.DurationWithThreshold(jitterInterval)))
+		assert.Check(t, cmp.DeepEqual(interval, expected, opt.DurationWithThreshold(defaultJitterInterval)))
 	}
+}
+
+func TestNextInterval_ConstantStrategy_WithJitterRange(t *testing.T) {
+	t.Parallel()
+
+	expected := 5 * time.Second
+	insomniac := newInsomniac()
+
+	err := NewRetrier(
+		WithStrategy(Constant(expected)),
+		WithJitterRange(-3*time.Second, 3*time.Second),
+		WithMaxAttempts(1000),
+		WithSleepFunc(insomniac.sleep),
+	).Do(func(_ *Retrier) error { return errDummy })
+	assert.ErrorIs(t, err, errDummy)
+
+	for _, interval := range insomniac.sleepIntervals {
+		assert.Check(t, cmp.DeepEqual(interval, expected, opt.DurationWithThreshold(6*time.Second)))
+	}
+}
+
+func Test_WhenJitterCausesNegativeInterval_ItDoesntWait(t *testing.T) {
+	t.Parallel()
+
+	before := time.Now()
+	err := NewRetrier(
+		WithStrategy(Constant(1*time.Second)),
+		WithJitterRange(-2*time.Second, -1*time.Second),
+		WithMaxAttempts(500),
+		// WithSleepFunc(nothing), // This should "really" sleep (for 0 seconds)
+	).Do(func(_ *Retrier) error { return errDummy })
+	after := time.Now()
+	assert.ErrorIs(t, err, errDummy)
+
+	assert.Check(t, after.Sub(before) < 1*time.Millisecond)
 }
 
 func TestNextInterval_ExponentialStrategy(t *testing.T) {
@@ -263,7 +298,7 @@ func TestNextInterval_ExponentialStrategy_WithJitter(t *testing.T) {
 			16 * time.Second,
 		},
 		insomniac.sleepIntervals,
-		opt.DurationWithThreshold(jitterInterval),
+		opt.DurationWithThreshold(defaultJitterInterval),
 	)
 }
 
@@ -390,7 +425,7 @@ func TestNextInterval_ExponentialSubsecondStrategy_WithJitter(t *testing.T) {
 		13335 * time.Millisecond,
 		20535 * time.Millisecond,
 		31622 * time.Millisecond,
-	}, insomniac.sleepIntervals, opt.DurationWithThreshold(jitterInterval))
+	}, insomniac.sleepIntervals, opt.DurationWithThreshold(defaultJitterInterval))
 }
 
 func TestString_WithFiniteAttemptCount(t *testing.T) {

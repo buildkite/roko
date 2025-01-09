@@ -10,12 +10,13 @@ import (
 
 var defaultRandom = rand.New(rand.NewSource(time.Now().UnixNano()))
 
-const jitterInterval = 1000 * time.Millisecond
+const defaultJitterInterval = 1000 * time.Millisecond
 
 type Retrier struct {
 	maxAttempts  int
 	attemptCount int
 	jitter       bool
+	jitterRange  jitterRange
 	forever      bool
 	rand         *rand.Rand
 
@@ -26,6 +27,8 @@ type Retrier struct {
 	strategyType       string
 	manualInterval     *time.Duration
 }
+
+type jitterRange struct{ min, max time.Duration }
 
 type Strategy func(*Retrier) time.Duration
 
@@ -119,6 +122,26 @@ func WithStrategy(strategy Strategy, strategyType string) retrierOpt {
 func WithJitter() retrierOpt {
 	return func(r *Retrier) {
 		r.jitter = true
+		r.jitterRange = jitterRange{min: 0, max: defaultJitterInterval}
+	}
+}
+
+// WithJitterRange enables jitter as [WithJitter] does, but allows the user to specify the range of the jitter as a
+// half-open range [min, max) of time.Duration values. The jitter will be a random value in the range [min, max) added
+// to the interval calculated by the retry strategy. The jitter will be recalculated for each retry. Both min and max may
+// be negative, but min must be less than max. min and max may both be zero, which is equivalent to disabling jitter.
+// If a negative jitter causes a negative interval, the interval will be clamped to zero.
+func WithJitterRange(min, max time.Duration) retrierOpt {
+	if min >= max {
+		panic("min must be less than max")
+	}
+
+	return func(r *Retrier) {
+		r.jitter = true
+		r.jitterRange = jitterRange{
+			min: min,
+			max: max,
+		}
 	}
 }
 
@@ -174,7 +197,9 @@ func (r *Retrier) Jitter() time.Duration {
 	if !r.jitter {
 		return 0
 	}
-	return time.Duration((1.0 - r.rand.Float64()) * float64(jitterInterval))
+
+	min, max := float64(r.jitterRange.min), float64(r.jitterRange.max)
+	return time.Duration(min + (max-min)*rand.Float64())
 }
 
 // MarkAttempt increments the attempt count for the retrier. This affects ShouldGiveUp, and also affects the retry interval
