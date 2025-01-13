@@ -3,6 +3,7 @@ package roko
 import (
 	"context"
 	"errors"
+	"regexp"
 	"testing"
 	"time"
 
@@ -516,6 +517,41 @@ func TestString_WithTryForever(t *testing.T) {
 		"Attempt 4/∞ Retrying in 1s",
 		"Attempt 5/∞ Retrying in 1s",
 	}, retryingIns)
+}
+
+func TestString_WithJitter(t *testing.T) {
+	t.Parallel()
+
+	insomniac := newInsomniac()
+	r := NewRetrier(
+		WithStrategy(Constant(10*time.Second)),
+		WithJitterRange(-1*time.Second, 10*time.Second),
+		WithMaxAttempts(5),
+		WithSleepFunc(insomniac.sleep),
+	)
+
+	retryingIns := make([]time.Duration, 0, 5)
+	durationRE := regexp.MustCompile(`[\d\.]+s`)
+	err := r.Do(func(_ *Retrier) error {
+		retryingIn := r.String()
+		dur := durationRE.FindString(retryingIn)
+		if dur != "" {
+			d, err := time.ParseDuration(dur)
+			if err != nil {
+				t.Fatalf("failed to parse duration: %s", dur)
+			}
+			retryingIns = append(retryingIns, d)
+		}
+
+		return errDummy
+	})
+
+	assert.ErrorIs(t, err, errDummy)
+
+	// Assert that the durations returned by the String() method are the actual lengths of time that the retrier slept
+	for i, interval := range insomniac.sleepIntervals {
+		assert.Check(t, cmp.DeepEqual(interval, retryingIns[i], DurationExact()))
+	}
 }
 
 func TestString_WithNoDelay(t *testing.T) {
