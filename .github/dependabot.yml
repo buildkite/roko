@@ -1,7 +1,12 @@
 version: 2
 
 updates:
-- package-ecosystem: gomod
-  directory: /
-  schedule:
-    interval: weekly
+  - package-ecosystem: docker
+    directories:
+      - /.buildkite
+    schedule:
+      interval: weekly
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
